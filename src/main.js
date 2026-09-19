@@ -25,6 +25,7 @@ const STAT_COLORS = {
 const API = 'https://pokeapi.co/api/v2';
 const artURL = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
 const sprURL = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+const idFromUrl = url => parseInt(url.split('/').filter(Boolean).pop());
 
 // ── State ──────────────────────────────────────────────────
 const cache = new Map();
@@ -34,6 +35,104 @@ let activeType = 'all';
 let searchQuery = '';
 let currentPage = 0;
 const PAGE_SIZE = 24;
+
+let favorites = new Set();
+let showFavsOnly = false;
+
+// Modal race-condition guard: each openModal call gets a unique token;
+// stale async continuations bail out when token !== modalToken.
+let modalToken = 0;
+let modalPushedHistory = false;
+let lastFocusedElement = null;
+let savedScrollY = 0;
+let focusTrapHandler = null;
+
+// ── Favorites ──────────────────────────────────────────────
+function loadFavorites() {
+  try {
+    const raw = localStorage.getItem('pkdx-favs');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) favorites = new Set(arr.filter(x => Number.isInteger(x)));
+    }
+  } catch {}
+}
+
+function saveFavorites() {
+  try { localStorage.setItem('pkdx-favs', JSON.stringify([...favorites])); } catch {}
+}
+
+function toggleFav(id) {
+  if (favorites.has(id)) favorites.delete(id);
+  else favorites.add(id);
+  saveFavorites();
+  updateFavUI(id);
+}
+
+function updateFavUI(id) {
+  const isFav = favorites.has(id);
+
+  const cardBtn = document.querySelector(`.c-fav[data-id="${id}"]`);
+  if (cardBtn) {
+    cardBtn.setAttribute('aria-pressed', String(isFav));
+    cardBtn.setAttribute('aria-label', isFav ? 'Quitar de favoritos' : 'Guardar como favorito');
+    cardBtn.textContent = isFav ? '♥' : '♡';
+    cardBtn.classList.toggle('fav-on', isFav);
+  }
+
+  const mBtn = document.getElementById('mFavBtn');
+  if (mBtn && parseInt(mBtn.dataset.id) === id) {
+    mBtn.setAttribute('aria-pressed', String(isFav));
+    mBtn.classList.toggle('fav-on', isFav);
+    mBtn.innerHTML = isFav ? '♥ Guardado' : '♡ Guardar';
+  }
+
+  if (showFavsOnly) applyFilters();
+}
+
+function clearAllFilters() {
+  activeType = 'all';
+  searchQuery = '';
+  showFavsOnly = false;
+  document.getElementById('srch').value = '';
+
+  document.querySelectorAll('.chip').forEach(c => {
+    c.classList.remove('on');
+    c.style.cssText = '';
+  });
+  const allChip = document.querySelector('.chip[data-type="all"]');
+  if (allChip) {
+    allChip.classList.add('on');
+    allChip.style.background = '#6b7080';
+    allChip.style.borderColor = 'transparent';
+    allChip.style.color = '#fff';
+  }
+  const favChip = document.getElementById('favChip');
+  if (favChip) {
+    favChip.classList.remove('on');
+    favChip.style.cssText = '';
+    favChip.setAttribute('aria-pressed', 'false');
+    favChip.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
+  }
+
+  applyFilters();
+}
+
+// ── URL routing ────────────────────────────────────────────
+function getPokemonIdFromUrl() {
+  const v = new URLSearchParams(location.search).get('p');
+  const n = parseInt(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+window.addEventListener('popstate', () => {
+  const id = getPokemonIdFromUrl();
+  if (id) {
+    openModal(id, { skipHistory: true });
+  } else if (!document.getElementById('bdrop').hidden) {
+    closeModalDOM();
+  }
+});
 
 // ── Fetch helper ───────────────────────────────────────────
 async function apiFetch(url) {
@@ -45,6 +144,62 @@ async function apiFetch(url) {
   return data;
 }
 
+// ── Scroll lock (iOS-safe) ─────────────────────────────────
+function lockScroll() {
+  savedScrollY = window.scrollY;
+  document.body.style.position = 'fixed';
+  document.body.style.top = `-${savedScrollY}px`;
+  document.body.style.width = '100%';
+}
+
+function unlockScroll() {
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.width = '';
+  window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+}
+
+// ── Focus trap ─────────────────────────────────────────────
+function installFocusTrap(el) {
+  removeFocusTrap();
+  focusTrapHandler = e => {
+    if (e.key !== 'Tab') return;
+    const nodes = [...el.querySelectorAll(
+      'button:not([disabled]), [href], input, select, [tabindex]:not([tabindex="-1"])'
+    )].filter(n => n.offsetParent !== null);
+    if (!nodes.length) return;
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  };
+  el.addEventListener('keydown', focusTrapHandler);
+}
+
+function removeFocusTrap() {
+  if (focusTrapHandler) {
+    document.getElementById('mbox')?.removeEventListener('keydown', focusTrapHandler);
+    focusTrapHandler = null;
+  }
+}
+
+// ── Toast ──────────────────────────────────────────────────
+function showToast(msg, duration = 2400) {
+  document.getElementById('appToast')?.remove();
+  const t = document.createElement('div');
+  t.id = 'appToast';
+  t.className = 'app-toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('toast-show')));
+  setTimeout(() => {
+    t.classList.remove('toast-show');
+    setTimeout(() => t.remove(), 300);
+  }, duration);
+}
+
 // ── Load generation ────────────────────────────────────────
 async function loadGeneration(offset, limit) {
   showSkeletons(Math.min(PAGE_SIZE, limit));
@@ -52,11 +207,11 @@ async function loadGeneration(offset, limit) {
   try {
     const data = await apiFetch(`${API}/pokemon?limit=${limit}&offset=${offset}`);
     allPokemon = data.results.map(p => ({
-      id: parseInt(p.url.split('/').filter(Boolean).pop()),
+      id: idFromUrl(p.url),
       name: p.name,
     }));
     applyFilters();
-  } catch (err) {
+  } catch {
     document.getElementById('grid').innerHTML = `
       <div class="empty">
         <div class="empty-icon">⚠️</div>
@@ -78,10 +233,10 @@ function applyFilters() {
 
   if (activeType !== 'all') {
     const typeIds = cache.get(`type:${activeType}`);
-    if (typeIds) {
-      list = list.filter(p => typeIds.has(p.id));
-    }
+    if (typeIds) list = list.filter(p => typeIds.has(p.id));
   }
+
+  if (showFavsOnly) list = list.filter(p => favorites.has(p.id));
 
   filtered = list;
   currentPage = 0;
@@ -115,18 +270,34 @@ async function renderPage(reset) {
   const slice = filtered.slice(start, end);
 
   if (reset && slice.length === 0) {
-    grid.innerHTML = `
-      <div class="empty">
-        <div class="empty-icon">🔍</div>
-        <p>No se encontraron Pokémon</p>
-        <small>Prueba con otro nombre o tipo</small>
-      </div>`;
+    if (showFavsOnly && favorites.size === 0) {
+      grid.innerHTML = `
+        <div class="empty">
+          <div class="empty-icon" aria-hidden="true">♡</div>
+          <p>Aún no tienes favoritos</p>
+          <small>Toca ♡ en cualquier tarjeta para guardar un Pokémon</small>
+        </div>`;
+    } else if (showFavsOnly) {
+      grid.innerHTML = `
+        <div class="empty">
+          <div class="empty-icon" aria-hidden="true">🔍</div>
+          <p>Ningún favorito coincide con los filtros</p>
+          <button class="btn-clear-filters">Limpiar filtros</button>
+        </div>`;
+      grid.querySelector('.btn-clear-filters').addEventListener('click', clearAllFilters);
+    } else {
+      grid.innerHTML = `
+        <div class="empty">
+          <div class="empty-icon" aria-hidden="true">🔍</div>
+          <p>No se encontraron Pokémon</p>
+          <small>Prueba con otro nombre o tipo</small>
+        </div>`;
+    }
     document.getElementById('lmw').hidden = true;
     updateInfoBar();
     return;
   }
 
-  // Insert placeholder skeletons
   const frag = document.createDocumentFragment();
   slice.forEach(p => {
     const el = document.createElement('div');
@@ -137,7 +308,6 @@ async function renderPage(reset) {
   });
   grid.appendChild(frag);
 
-  // Fetch & render each card
   await Promise.all(slice.map(async p => {
     try {
       const d = await apiFetch(`${API}/pokemon/${p.id}`);
@@ -146,6 +316,7 @@ async function renderPage(reset) {
 
       const primaryType = d.types[0].type.name;
       const color = TYPE_COLORS[primaryType] || '#888';
+      const isFav = favorites.has(p.id);
 
       el.className = 'card';
       el.tabIndex = 0;
@@ -157,6 +328,10 @@ async function renderPage(reset) {
           <div class="c-deco"></div>
           <div class="c-deco2"></div>
           <div class="c-num">#${String(p.id).padStart(3, '0')}</div>
+          <button class="fav-btn c-fav${isFav ? ' fav-on' : ''}"
+            data-id="${p.id}"
+            aria-pressed="${isFav}"
+            aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">${isFav ? '♥' : '♡'}</button>
           <img class="c-art"
             src="${artURL(p.id)}"
             alt="${p.name}"
@@ -170,6 +345,11 @@ async function renderPage(reset) {
           </div>
         </div>
       `;
+
+      el.querySelector('.c-fav').addEventListener('click', e => {
+        e.stopPropagation();
+        toggleFav(p.id);
+      });
       el.addEventListener('click', () => openModal(p.id));
       el.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(p.id); }
@@ -179,7 +359,6 @@ async function renderPage(reset) {
     }
   }));
 
-  // Load more button visibility
   const hasMore = (currentPage + 1) * PAGE_SIZE < filtered.length;
   const lmw = document.getElementById('lmw');
   lmw.hidden = !hasMore;
@@ -190,27 +369,184 @@ async function renderPage(reset) {
 
 function updateInfoBar() {
   const bar = document.getElementById('infoBar');
-  const shown = Math.min((currentPage + 1) * PAGE_SIZE, filtered.length);
+  const favCount = showFavsOnly ? favorites.size : null;
   bar.innerHTML = `
     <span class="pill">${filtered.length} Pokémon</span>
     ${activeType !== 'all' ? `<span class="pill" style="background:${TYPE_COLORS[activeType]}22;color:${TYPE_COLORS[activeType]}">${TYPE_ES[activeType]}</span>` : ''}
     ${searchQuery ? `<span class="pill">«${searchQuery}»</span>` : ''}
+    ${showFavsOnly ? `<span class="pill pill-fav">♥ ${favCount} favorito${favCount !== 1 ? 's' : ''}</span>` : ''}
   `;
 }
 
+// ── Evolution ──────────────────────────────────────────────
+function evoConditionLabel(details) {
+  if (!details?.length) return null;
+  const d = details[0];
+  const t = d.trigger?.name;
+
+  if (t === 'level-up') {
+    if (d.min_level) {
+      let label = `Nivel ${d.min_level}`;
+      if (d.time_of_day === 'day') label += ' (día)';
+      else if (d.time_of_day === 'night') label += ' (noche)';
+      if (d.held_item?.name) label += `\n${d.held_item.name.replace(/-/g, ' ')}`;
+      return label;
+    }
+    if (d.min_happiness) {
+      if (d.time_of_day === 'day') return 'Amistad (día)';
+      if (d.time_of_day === 'night') return 'Amistad (noche)';
+      return 'Amistad';
+    }
+    if (d.min_affection) return 'Cariño';
+    if (d.known_move_type?.name) return `Mov. ${d.known_move_type.name}`;
+    if (d.known_move?.name) return `Con ${d.known_move.name.replace(/-/g, ' ')}`;
+    if (d.location?.name) return `En ${d.location.name.replace(/-/g, ' ')}`;
+    if (d.held_item?.name) return `Llevar ${d.held_item.name.replace(/-/g, ' ')}`;
+    if (d.min_beauty) return `Belleza ${d.min_beauty}`;
+    if (d.needs_overworld_rain) return 'Bajo lluvia';
+    if (d.turn_upside_down) return 'Boca abajo';
+    if (d.relative_physical_stats === 1) return 'ATQ > DEF';
+    if (d.relative_physical_stats === -1) return 'DEF > ATQ';
+    if (d.relative_physical_stats === 0) return 'ATQ = DEF';
+    if (d.time_of_day === 'day') return 'Subir nivel (día)';
+    if (d.time_of_day === 'night') return 'Subir nivel (noche)';
+    return 'Subir nivel';
+  }
+  if (t === 'use-item') return d.item?.name?.replace(/-/g, ' ') || 'Usar objeto';
+  if (t === 'trade') {
+    if (d.held_item?.name) return `Intercambio\n${d.held_item.name.replace(/-/g, ' ')}`;
+    if (d.trade_species?.name) return `Intercambio c/\n${d.trade_species.name}`;
+    return 'Intercambio';
+  }
+  if (t === 'shed') return 'Muda';
+  if (t === 'spin') return 'Dar vueltas';
+  if (t === 'tower-of-darkness') return 'Torre Siniestra';
+  if (t === 'tower-of-waters') return 'Torre del Agua';
+  if (t === 'three-critical-hits') return '3 golpes críticos';
+  if (t === 'take-damage') return 'Recibir daño';
+  if (t === 'agile-style-move') return 'Movimiento ágil';
+  if (t === 'strong-style-move') return 'Movimiento fuerte';
+  if (t === 'other') return null;
+  return t?.replace(/-/g, ' ') || null;
+}
+
+function chainNodeCount(node) {
+  return 1 + node.evolves_to.reduce((s, e) => s + chainNodeCount(e), 0);
+}
+
+// Returns HTML string. currentId highlights the currently viewed pokemon.
+function renderEvoNode(chain, currentId) {
+  const id = idFromUrl(chain.species.url);
+  const isCurrent = id === currentId;
+  const name = chain.species.name;
+
+  const btn = `<button class="evo-btn${isCurrent ? ' evo-current' : ''}"
+    data-evo-id="${id}"
+    ${isCurrent ? 'disabled aria-current="true" aria-label="Pokémon actual"' : `aria-label="Abrir ${name}"`}>
+    <img src="${sprURL(id)}" alt="${name}" width="56" height="56"
+      onerror="this.style.opacity='0'">
+    <span class="evo-name">${name}</span>
+  </button>`;
+
+  if (chain.evolves_to.length === 0) {
+    return `<div class="evo-node">${btn}</div>`;
+  }
+
+  if (chain.evolves_to.length === 1) {
+    const next = chain.evolves_to[0];
+    const cond = evoConditionLabel(next.evolution_details);
+    return `<div class="evo-node">${btn}</div>
+    <div class="evo-arrow-wrap" aria-hidden="true">
+      ${cond ? `<span class="evo-cond">${cond}</span>` : ''}
+      <span class="evo-arr">›</span>
+    </div>
+    ${renderEvoNode(next, currentId)}`;
+  }
+
+  // Branching evolution (Eevee, Tyrogue, Wurmple, etc.)
+  const branches = chain.evolves_to.map(next => {
+    const cond = evoConditionLabel(next.evolution_details);
+    return `<div class="evo-branch">
+      <div class="evo-arrow-wrap" aria-hidden="true">
+        ${cond ? `<span class="evo-cond">${cond}</span>` : ''}
+        <span class="evo-arr">›</span>
+      </div>
+      ${renderEvoNode(next, currentId)}
+    </div>`;
+  }).join('');
+
+  return `<div class="evo-node">${btn}</div>
+  <div class="evo-splits">${branches}</div>`;
+}
+
+async function loadEvolutionSection(species, currentId, token) {
+  const getEl = () => document.getElementById('evoSection');
+  const el = getEl();
+  if (!el) return;
+
+  if (!species?.evolution_chain?.url) {
+    if (token === modalToken) el.innerHTML = `<p class="evo-none">Sin datos de evolución</p>`;
+    return;
+  }
+
+  try {
+    const chainData = await apiFetch(species.evolution_chain.url);
+    if (token !== modalToken) return;
+    const cont = getEl();
+    if (!cont) return;
+
+    if (chainNodeCount(chainData.chain) <= 1) {
+      cont.innerHTML = `<p class="evo-none">No evoluciona</p>`;
+      return;
+    }
+
+    cont.innerHTML = `<div class="evo-chain" role="group" aria-label="Cadena evolutiva">${renderEvoNode(chainData.chain, currentId)}</div>`;
+
+    cont.querySelectorAll('.evo-btn[data-evo-id]:not([disabled])').forEach(btn => {
+      btn.addEventListener('click', () => openModal(parseInt(btn.dataset.evoId)));
+    });
+
+  } catch {
+    if (token !== modalToken) return;
+    const cont = getEl();
+    if (!cont) return;
+    const offlineHint = !navigator.onLine ? 'Sin conexión. ' : '';
+    cont.innerHTML = `<p class="evo-none evo-error">${offlineHint}No se pudo cargar la cadena evolutiva. <button class="evo-retry">Reintentar</button></p>`;
+    cont.querySelector('.evo-retry').addEventListener('click', () => {
+      cont.innerHTML = `<div class="spin-wrap-sm"><div class="spinner-sm"></div></div>`;
+      loadEvolutionSection(species, currentId, modalToken);
+    });
+  }
+}
+
 // ── Modal ──────────────────────────────────────────────────
-async function openModal(id) {
+async function openModal(id, opts = {}) {
+  const token = ++modalToken;
   const bdrop = document.getElementById('bdrop');
   const mbox = document.getElementById('mbox');
 
+  lastFocusedElement = document.activeElement;
+
   bdrop.hidden = false;
   requestAnimationFrame(() => requestAnimationFrame(() => bdrop.classList.add('vis')));
-  mbox.innerHTML = `<div class="spin-wrap"><div class="spinner"></div><span class="spin-txt">Cargando...</span></div>`;
+  mbox.innerHTML = `<div class="spin-wrap"><div class="spinner"></div><span class="spin-txt">Cargando…</span></div>`;
+
+  lockScroll();
+
+  if (opts.skipHistory !== true) {
+    history.pushState({ pkdx: true, pokemonId: id }, '', '?p=' + id);
+    modalPushedHistory = true;
+  } else {
+    modalPushedHistory = false;
+  }
 
   try {
     const d = await apiFetch(`${API}/pokemon/${id}`);
+    if (token !== modalToken) return;
+
     let species = null;
     try { species = await apiFetch(d.species.url); } catch {}
+    if (token !== modalToken) return;
 
     const genus = (species?.genera?.find(g => g.language.name === 'es')
       || species?.genera?.find(g => g.language.name === 'en'))?.genus || '';
@@ -222,13 +558,14 @@ async function openModal(id) {
     const primaryType = d.types[0].type.name;
     const color = TYPE_COLORS[primaryType] || '#888';
     const totalStats = d.stats.reduce((s, x) => s + x.base_stat, 0);
+    const isFav = favorites.has(id);
 
     mbox.innerHTML = `
       <div class="m-hero">
         <div class="m-bg" style="background: linear-gradient(160deg, ${color}f0, ${color}99)"></div>
         <div class="m-ring"></div>
         <div class="m-ring2"></div>
-        <button class="m-close" id="mClose" aria-label="Cerrar">
+        <button class="m-close" id="mClose" aria-label="Cerrar ficha">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -242,25 +579,30 @@ async function openModal(id) {
       <div class="m-body">
         <div class="m-name">${d.name}</div>
         ${genus ? `<div class="m-genus">${genus}</div>` : ''}
+
+        <div class="m-actions">
+          <button class="fav-btn m-fav${isFav ? ' fav-on' : ''}" id="mFavBtn" data-id="${id}"
+            aria-pressed="${isFav}"
+            aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">
+            ${isFav ? '♥ Guardado' : '♡ Guardar'}
+          </button>
+          <button class="share-btn" id="mShareBtn" aria-label="Compartir enlace de ${d.name}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+            Compartir
+          </button>
+        </div>
+
         ${desc ? `<div class="m-desc" style="border-color:${color}">${desc}</div>` : ''}
 
         <div class="m-grid">
-          <div class="m-cell">
-            <div class="m-label">Altura</div>
-            <div class="m-val">${(d.height / 10).toFixed(1)} m</div>
-          </div>
-          <div class="m-cell">
-            <div class="m-label">Peso</div>
-            <div class="m-val">${(d.weight / 10).toFixed(1)} kg</div>
-          </div>
-          <div class="m-cell">
-            <div class="m-label">Exp. base</div>
-            <div class="m-val">${d.base_experience ?? '—'}</div>
-          </div>
-          <div class="m-cell">
-            <div class="m-label">Total</div>
-            <div class="m-val" style="color:${color}">${totalStats}</div>
-          </div>
+          <div class="m-cell"><div class="m-label">Altura</div><div class="m-val">${(d.height / 10).toFixed(1)} m</div></div>
+          <div class="m-cell"><div class="m-label">Peso</div><div class="m-val">${(d.weight / 10).toFixed(1)} kg</div></div>
+          <div class="m-cell"><div class="m-label">Exp. base</div><div class="m-val">${d.base_experience ?? '—'}</div></div>
+          <div class="m-cell"><div class="m-label">Total</div><div class="m-val" style="color:${color}">${totalStats}</div></div>
         </div>
 
         <div class="sec-title">Habilidades</div>
@@ -285,20 +627,79 @@ async function openModal(id) {
               </div>
             </div>`;
         }).join('')}
+
+        <div class="sec-title">Evolución</div>
+        <div id="evoSection">
+          <div class="spin-wrap-sm"><div class="spinner-sm"></div></div>
+        </div>
       </div>
     `;
 
     document.getElementById('mClose').addEventListener('click', closeModal);
+    document.getElementById('mFavBtn').addEventListener('click', () => toggleFav(id));
+    document.getElementById('mShareBtn').addEventListener('click', () => sharePokemon(id, d.name));
+
+    const mbox2 = document.getElementById('mbox');
+    installFocusTrap(mbox2);
+    document.getElementById('mClose').focus();
+
+    loadEvolutionSection(species, id, token);
 
   } catch {
-    mbox.innerHTML = `<div class="spin-wrap"><p style="color:var(--muted); font-weight:600">No se pudo cargar este Pokémon</p></div>`;
+    if (token !== modalToken) return;
+    mbox.innerHTML = `<div class="spin-wrap">
+      <p style="color:var(--muted); font-weight:600">No se pudo cargar este Pokémon</p>
+      ${!navigator.onLine ? '<small style="color:var(--muted)">Verifica tu conexión a internet</small>' : ''}
+    </div>`;
   }
 }
 
 function closeModal() {
+  // If we pushed our own history entry, use back() to pop it.
+  // The resulting popstate event will call closeModalDOM().
+  if (modalPushedHistory) {
+    modalPushedHistory = false;
+    history.back();
+    return;
+  }
+  // Direct link case: remove ?p= without adding a history entry.
+  const url = new URL(location.href);
+  url.searchParams.delete('p');
+  history.replaceState({}, '', url);
+  closeModalDOM();
+}
+
+function closeModalDOM() {
+  modalPushedHistory = false;
+  removeFocusTrap();
   const bdrop = document.getElementById('bdrop');
+  if (bdrop.hidden) return;
   bdrop.classList.remove('vis');
-  setTimeout(() => { bdrop.hidden = true; }, 260);
+  setTimeout(() => {
+    bdrop.hidden = true;
+    unlockScroll();
+    lastFocusedElement?.focus();
+    lastFocusedElement = null;
+  }, 260);
+}
+
+// ── Share ──────────────────────────────────────────────────
+async function sharePokemon(id, name) {
+  const url = `${location.origin}${location.pathname}?p=${id}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: `Pokédex — ${name}`, url });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Enlace copiado al portapapeles');
+  } catch {
+    showToast(url, 5000);
+  }
 }
 
 // ── Type chips ─────────────────────────────────────────────
@@ -309,6 +710,7 @@ function buildTypeChips() {
     const btn = document.createElement('button');
     btn.className = 'chip' + (type === 'all' ? ' on' : '');
     btn.dataset.type = type;
+    btn.setAttribute('aria-pressed', type === 'all' ? 'true' : 'false');
     btn.innerHTML = `<span class="dot" style="${type !== 'all' ? `background:${color}` : ''}"></span>${label}`;
     if (type === 'all') {
       btn.style.background = '#6b7080';
@@ -317,34 +719,28 @@ function buildTypeChips() {
     }
 
     btn.addEventListener('click', async () => {
-      if (activeType === type) return; // already selected
+      if (activeType === type) return;
 
-      // Update chip UI
-      document.querySelectorAll('.chip').forEach(c => {
+      document.querySelectorAll('.chip[data-type]').forEach(c => {
         c.classList.remove('on');
-        c.style.background = '';
-        c.style.borderColor = '';
-        c.style.color = '';
+        c.style.cssText = '';
+        c.setAttribute('aria-pressed', 'false');
       });
       btn.classList.add('on');
       btn.style.background = color;
       btn.style.borderColor = 'transparent';
-      btn.style.color = type === 'all' ? '#fff' : '#fff';
+      btn.style.color = '#fff';
+      btn.setAttribute('aria-pressed', 'true');
 
       activeType = type;
 
-      // Fetch type pokemon list if not cached
       if (type !== 'all' && !cache.has(`type:${type}`)) {
         showSkeletons(PAGE_SIZE);
         try {
           const td = await apiFetch(`${API}/type/${type}`);
-          const ids = new Set(td.pokemon.map(p =>
-            parseInt(p.pokemon.url.split('/').filter(Boolean).pop())
-          ));
+          const ids = new Set(td.pokemon.map(p => idFromUrl(p.pokemon.url)));
           cache.set(`type:${type}`, ids);
-        } catch {
-          // silently fail - will show all pokemon
-        }
+        } catch {}
       }
 
       applyFilters();
@@ -354,6 +750,36 @@ function buildTypeChips() {
   }
 
   makeChip('Todos', 'all', '#6b7080');
+
+  // Favorites toggle chip (orthogonal to type filter)
+  const favChip = document.createElement('button');
+  favChip.className = 'chip chip-fav';
+  favChip.id = 'favChip';
+  favChip.setAttribute('aria-pressed', 'false');
+  favChip.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
+  favChip.addEventListener('click', () => {
+    showFavsOnly = !showFavsOnly;
+    favChip.setAttribute('aria-pressed', String(showFavsOnly));
+    favChip.classList.toggle('on', showFavsOnly);
+    if (showFavsOnly) {
+      favChip.style.background = 'var(--red)';
+      favChip.style.borderColor = 'transparent';
+      favChip.style.color = '#fff';
+      favChip.innerHTML = '<span aria-hidden="true">♥</span> Favoritos';
+    } else {
+      favChip.style.cssText = '';
+      favChip.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
+    }
+    applyFilters();
+  });
+  bar.appendChild(favChip);
+
+  // Visual separator
+  const sep = document.createElement('div');
+  sep.className = 'chip-sep';
+  sep.setAttribute('aria-hidden', 'true');
+  bar.appendChild(sep);
+
   Object.entries(TYPE_ES).forEach(([key, label]) =>
     makeChip(label, key, TYPE_COLORS[key] || '#888')
   );
@@ -372,23 +798,29 @@ document.getElementById('srch').addEventListener('input', e => {
 document.getElementById('gs').addEventListener('change', e => {
   const [offset, limit] = e.target.value.split(',').map(Number);
 
-  // Reset state
   activeType = 'all';
   searchQuery = '';
+  showFavsOnly = false;
   document.getElementById('srch').value = '';
 
-  // Reset chip UI
   document.querySelectorAll('.chip').forEach(c => {
     c.classList.remove('on');
-    c.style.background = '';
-    c.style.borderColor = '';
-    c.style.color = '';
+    c.style.cssText = '';
+    c.removeAttribute('aria-pressed');
   });
   const allChip = document.querySelector('.chip[data-type="all"]');
-  allChip.classList.add('on');
-  allChip.style.background = '#6b7080';
-  allChip.style.borderColor = 'transparent';
-  allChip.style.color = '#fff';
+  if (allChip) {
+    allChip.classList.add('on');
+    allChip.style.background = '#6b7080';
+    allChip.style.borderColor = 'transparent';
+    allChip.style.color = '#fff';
+    allChip.setAttribute('aria-pressed', 'true');
+  }
+  const favChip = document.getElementById('favChip');
+  if (favChip) {
+    favChip.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
+    favChip.setAttribute('aria-pressed', 'false');
+  }
 
   loadGeneration(offset, limit);
 });
@@ -428,19 +860,31 @@ function initTheme() {
   applyTheme(saved ? saved === 'dark' : isDark());
 }
 
-document.getElementById('themeToggle').addEventListener('click', () => {
-  applyTheme(!isDark());
-});
+document.getElementById('themeToggle').addEventListener('click', () => applyTheme(!isDark()));
 
 // ── Init ───────────────────────────────────────────────────
+loadFavorites();
 initTheme();
 buildTypeChips();
 loadGeneration(0, 151);
 
+// Open modal immediately if landing on a direct ?p= URL
+const _initialId = getPokemonIdFromUrl();
+if (_initialId) openModal(_initialId, { skipHistory: true });
+
 // ── Service Worker ─────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        nw?.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            showToast('Nueva versión disponible — recarga para actualizar', 6000);
+          }
+        });
+      });
+    }).catch(() => {});
   });
 }
 
@@ -454,7 +898,7 @@ function showInstallBanner() {
   banner.className = 'install-banner';
   banner.innerHTML = `
     <div class="install-inner">
-      <div class="install-icon">⚡</div>
+      <div class="install-icon" aria-hidden="true">⚡</div>
       <div class="install-text">
         <strong>Instalar Pokédex</strong>
         <span>Accede sin conexión desde tu pantalla de inicio</span>
@@ -486,8 +930,7 @@ window.addEventListener('beforeinstallprompt', e => {
 });
 
 window.addEventListener('appinstalled', () => {
-  const banner = document.getElementById('installBanner');
-  if (banner) banner.remove();
+  document.getElementById('installBanner')?.remove();
   deferredPrompt = null;
 });
 
@@ -499,10 +942,11 @@ function showOfflineToast(offline) {
     const t = document.createElement('div');
     t.id = 'offlineToast';
     t.className = 'offline-toast';
+    t.setAttribute('role', 'status');
     t.innerHTML = '📡 Sin conexión — datos del caché';
     document.body.appendChild(t);
   } else {
-    if (existing) existing.remove();
+    existing?.remove();
   }
 }
 window.addEventListener('offline', () => showOfflineToast(true));

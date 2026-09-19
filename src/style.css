@@ -486,6 +486,165 @@ body {
 .spin-txt { color: var(--muted); font-size: .85rem; font-weight: 600; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── FAVORITES ── */
+.fav-btn {
+  background: rgba(0,0,0,.22);
+  border: none; cursor: pointer;
+  border-radius: 50%;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .95rem; line-height: 1;
+  transition: background .15s, transform .18s;
+  color: rgba(255,255,255,.85);
+}
+.fav-btn:hover { background: rgba(0,0,0,.4); transform: scale(1.2); }
+.fav-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.fav-btn.fav-on { color: #ff6b7a; }
+
+.c-fav { position: absolute; top: 8px; right: 8px; z-index: 2; }
+
+/* Chip separator */
+.chip-sep {
+  width: 1px; height: 20px;
+  background: var(--border); flex-shrink: 0; margin: 0 3px;
+}
+
+/* Modal action buttons */
+.m-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin: 8px 0 16px;
+}
+.m-fav {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 20px;
+  background: var(--surface2); border: 2px solid var(--border);
+  color: var(--text); font-family: 'Outfit', sans-serif;
+  font-weight: 700; font-size: .82rem; cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.m-fav:hover { border-color: var(--red); }
+.m-fav:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+.m-fav.fav-on {
+  background: rgba(230,57,70,.1);
+  border-color: var(--red); color: var(--red);
+}
+
+.share-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 20px;
+  background: var(--surface2); border: 2px solid var(--border);
+  color: var(--text); font-family: 'Outfit', sans-serif;
+  font-weight: 700; font-size: .82rem; cursor: pointer;
+  transition: border-color .15s;
+}
+.share-btn:hover { border-color: var(--text); }
+.share-btn:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+
+/* Pill for favorites count in info bar */
+.pill-fav { background: rgba(230,57,70,.12) !important; color: var(--red) !important; }
+
+/* Clear filters button (empty state) */
+.btn-clear-filters {
+  display: inline-block; margin-top: 14px;
+  padding: 9px 20px; background: var(--red); color: #fff;
+  border: none; border-radius: 20px;
+  font-family: 'Outfit', sans-serif; font-weight: 800; font-size: .82rem;
+  cursor: pointer; transition: opacity .15s;
+}
+.btn-clear-filters:hover { opacity: .85; }
+
+/* ── EVOLUTION CHAIN ── */
+.evo-chain {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 8px 0 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.evo-chain::-webkit-scrollbar { height: 4px; }
+.evo-chain::-webkit-scrollbar-track { background: transparent; }
+.evo-chain::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.evo-node { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+
+.evo-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  background: var(--surface2); border: 2px solid transparent;
+  border-radius: 14px; padding: 10px 6px 7px;
+  cursor: pointer; min-width: 70px; max-width: 80px;
+  transition: border-color .15s, transform .18s cubic-bezier(.34,1.56,.64,1), background .15s;
+}
+.evo-btn:hover:not(:disabled) {
+  border-color: var(--red);
+  transform: translateY(-4px);
+  background: var(--surface);
+}
+.evo-btn:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+.evo-btn.evo-current {
+  border-color: var(--red);
+  background: rgba(230,57,70,.07);
+  cursor: default;
+}
+.evo-btn img { width: 56px; height: 56px; object-fit: contain; }
+.evo-name {
+  font-size: .66rem; font-weight: 700; text-transform: capitalize;
+  color: var(--text); text-align: center;
+  max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.evo-arrow-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  flex-shrink: 0; padding: 0 3px;
+}
+.evo-cond {
+  font-size: .58rem; font-weight: 700; color: var(--muted);
+  text-align: center; max-width: 58px; line-height: 1.25;
+  white-space: pre-line;
+}
+.evo-arr { font-size: 1.3rem; color: var(--muted); line-height: 1; }
+
+.evo-splits { display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; }
+.evo-branch { display: flex; align-items: center; gap: 2px; }
+
+.evo-none {
+  color: var(--muted); font-size: .82rem; font-style: italic; padding: 10px 0;
+}
+.evo-error { color: var(--red); font-style: normal; }
+.evo-retry {
+  background: none; border: 1px solid var(--red); color: var(--red);
+  border-radius: 8px; padding: 3px 10px; margin-left: 6px;
+  font-family: 'Outfit', sans-serif; font-size: .75rem; font-weight: 700; cursor: pointer;
+  transition: background .15s;
+}
+.evo-retry:hover { background: rgba(230,57,70,.1); }
+
+/* Inline spinner for evolution section */
+.spin-wrap-sm { padding: 20px; display: flex; justify-content: center; }
+.spinner-sm {
+  width: 22px; height: 22px;
+  border: 2px solid var(--border); border-top-color: var(--red);
+  border-radius: 50%; animation: spin .75s linear infinite;
+}
+
+/* ── TOAST ── */
+.app-toast {
+  position: fixed;
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  left: 50%; transform: translateX(-50%) translateY(16px);
+  background: #1a1c2e; color: #fff;
+  padding: 10px 20px; border-radius: 24px;
+  font-size: .82rem; font-weight: 700;
+  z-index: 600; white-space: nowrap; max-width: calc(100vw - 32px);
+  overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 4px 20px rgba(0,0,0,.3);
+  opacity: 0; transition: opacity .25s, transform .25s;
+  pointer-events: none;
+}
+.app-toast.toast-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 /* ── INSTALL BANNER ── */
 .install-banner {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
