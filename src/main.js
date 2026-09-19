@@ -42,7 +42,6 @@ let showFavsOnly = false;
 // Modal race-condition guard: each openModal call gets a unique token;
 // stale async continuations bail out when token !== modalToken.
 let modalToken = 0;
-let modalPushedHistory = false;
 let lastFocusedElement = null;
 let savedScrollY = 0;
 let focusTrapHandler = null;
@@ -198,6 +197,22 @@ function showToast(msg, duration = 2400) {
     t.classList.remove('toast-show');
     setTimeout(() => t.remove(), 300);
   }, duration);
+}
+
+function showUpdateBanner() {
+  if (document.getElementById('updateBanner')) return;
+  const el = document.createElement('div');
+  el.id = 'updateBanner';
+  el.className = 'update-banner';
+  el.setAttribute('role', 'status');
+  el.innerHTML = `
+    <span>Nueva versión disponible</span>
+    <button id="updateReload">Actualizar</button>
+    <button id="updateDismiss" aria-label="Descartar">✕</button>
+  `;
+  document.body.appendChild(el);
+  document.getElementById('updateReload').addEventListener('click', () => location.reload());
+  document.getElementById('updateDismiss').addEventListener('click', () => el.remove());
 }
 
 // ── Load generation ────────────────────────────────────────
@@ -525,19 +540,18 @@ async function openModal(id, opts = {}) {
   const bdrop = document.getElementById('bdrop');
   const mbox = document.getElementById('mbox');
 
-  lastFocusedElement = document.activeElement;
+  const wasOpen = !bdrop.hidden;
+  if (!wasOpen) {
+    lastFocusedElement = document.activeElement;
+    lockScroll();
+  }
 
   bdrop.hidden = false;
   requestAnimationFrame(() => requestAnimationFrame(() => bdrop.classList.add('vis')));
   mbox.innerHTML = `<div class="spin-wrap"><div class="spinner"></div><span class="spin-txt">Cargando…</span></div>`;
 
-  lockScroll();
-
   if (opts.skipHistory !== true) {
     history.pushState({ pkdx: true, pokemonId: id }, '', '?p=' + id);
-    modalPushedHistory = true;
-  } else {
-    modalPushedHistory = false;
   }
 
   try {
@@ -655,14 +669,10 @@ async function openModal(id, opts = {}) {
 }
 
 function closeModal() {
-  // If we pushed our own history entry, use back() to pop it.
-  // The resulting popstate event will call closeModalDOM().
-  if (modalPushedHistory) {
-    modalPushedHistory = false;
+  if (history.state?.pkdx) {
     history.back();
     return;
   }
-  // Direct link case: remove ?p= without adding a history entry.
   const url = new URL(location.href);
   url.searchParams.delete('p');
   history.replaceState({}, '', url);
@@ -670,7 +680,6 @@ function closeModal() {
 }
 
 function closeModalDOM() {
-  modalPushedHistory = false;
   removeFocusTrap();
   const bdrop = document.getElementById('bdrop');
   if (bdrop.hidden) return;
@@ -684,6 +693,23 @@ function closeModalDOM() {
 }
 
 // ── Share ──────────────────────────────────────────────────
+function showShareFallback(url) {
+  document.getElementById('shareFallback')?.remove();
+  const div = document.createElement('div');
+  div.id = 'shareFallback';
+  div.className = 'share-fallback';
+  div.innerHTML = `
+    <span>Copia el enlace:</span>
+    <input type="url" value="${url}" readonly aria-label="Enlace para compartir">
+    <button class="share-fallback-close" aria-label="Cerrar">✕</button>
+  `;
+  document.querySelector('.m-actions')?.after(div);
+  const input = div.querySelector('input');
+  input.focus();
+  input.select();
+  div.querySelector('.share-fallback-close').addEventListener('click', () => div.remove());
+}
+
 async function sharePokemon(id, name) {
   const url = `${location.origin}${location.pathname}?p=${id}`;
   if (navigator.share) {
@@ -698,7 +724,7 @@ async function sharePokemon(id, name) {
     await navigator.clipboard.writeText(url);
     showToast('Enlace copiado al portapapeles');
   } catch {
-    showToast(url, 5000);
+    showShareFallback(url);
   }
 }
 
@@ -880,7 +906,7 @@ if ('serviceWorker' in navigator) {
         const nw = reg.installing;
         nw?.addEventListener('statechange', () => {
           if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-            showToast('Nueva versión disponible — recarga para actualizar', 6000);
+            showUpdateBanner();
           }
         });
       });

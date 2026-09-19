@@ -645,6 +645,58 @@ body {
 }
 .app-toast.toast-show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ── UPDATE BANNER ── */
+.update-banner {
+  position: fixed; top: calc(70px + env(safe-area-inset-top, 0px));
+  left: 50%; transform: translateX(-50%);
+  background: #1a1c2e; color: #fff;
+  padding: 10px 14px; border-radius: 24px;
+  font-size: .82rem; font-weight: 700;
+  z-index: 450; white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,.35);
+  display: flex; align-items: center; gap: 10px;
+  animation: fadeIn .3s ease;
+}
+.update-banner span { flex: 1; }
+.update-banner #updateReload {
+  background: var(--red); border: none; color: #fff;
+  border-radius: 12px; padding: 5px 12px;
+  font-family: 'Outfit', sans-serif; font-weight: 800; font-size: .78rem;
+  cursor: pointer; flex-shrink: 0; transition: opacity .15s;
+}
+.update-banner #updateReload:hover { opacity: .85; }
+.update-banner #updateDismiss {
+  background: rgba(255,255,255,.15); border: none; color: #fff;
+  border-radius: 50%; width: 24px; height: 24px; flex-shrink: 0;
+  font-size: .8rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-family: 'Outfit', sans-serif; transition: background .15s;
+}
+.update-banner #updateDismiss:hover { background: rgba(255,255,255,.3); }
+
+/* ── SHARE FALLBACK ── */
+.share-fallback {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 10px 12px;
+  margin: 4px 0 10px;
+}
+.share-fallback span { font-size: .78rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.share-fallback input {
+  flex: 1; min-width: 0; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text);
+  font-family: 'Outfit', sans-serif; font-size: .78rem;
+  outline: none; cursor: text;
+}
+.share-fallback input:focus { border-color: var(--red); }
+.share-fallback-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: .9rem; padding: 4px 6px;
+  border-radius: 50%; transition: background .15s; flex-shrink: 0;
+  font-family: 'Outfit', sans-serif;
+}
+.share-fallback-close:hover { background: var(--surface); }
+
 /* ── INSTALL BANNER ── */
 .install-banner {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
