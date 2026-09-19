@@ -254,7 +254,7 @@ async function loadGeneration(offset, limit) {
         <p>No se pudo conectar con la API</p>
         <small>Verifica tu conexión a internet</small>
       </div>`;
-    document.getElementById('lmw').hidden = true;
+    document.getElementById('pgn').hidden = true;
   }
 }
 
@@ -289,7 +289,53 @@ function showSkeletons(n) {
         <div class="sk-l"></div>
       </div>
     </div>`).join('');
-  document.getElementById('lmw').hidden = true;
+  document.getElementById('pgn').hidden = true;
+}
+
+// ── Pagination ─────────────────────────────────────────────
+function renderPagination() {
+  const pgn = document.getElementById('pgn');
+  const total = filtered.length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  if (totalPages <= 1) { pgn.hidden = true; return; }
+  pgn.hidden = false;
+
+  const cur = currentPage;
+  const pages = [];
+
+  const show = new Set([0, totalPages - 1]);
+  for (let i = Math.max(0, cur - 2); i <= Math.min(totalPages - 1, cur + 2); i++) show.add(i);
+  const sorted = [...show].sort((a, b) => a - b);
+
+  sorted.forEach((p, i) => {
+    if (i > 0 && p - sorted[i - 1] > 1) pages.push('…');
+    pages.push(p);
+  });
+
+  pgn.innerHTML = `
+    <button class="pg-btn pg-prev" ${cur === 0 ? 'disabled' : ''} aria-label="Página anterior">‹</button>
+    <div class="pg-nums">
+      ${pages.map(p => p === '…'
+        ? `<span class="pg-ellipsis">…</span>`
+        : `<button class="pg-num${p === cur ? ' pg-active' : ''}" data-p="${p}">${p + 1}</button>`
+      ).join('')}
+    </div>
+    <button class="pg-btn pg-next" ${cur === totalPages - 1 ? 'disabled' : ''} aria-label="Página siguiente">›</button>
+  `;
+
+  pgn.querySelector('.pg-prev').addEventListener('click', () => goPage(cur - 1));
+  pgn.querySelector('.pg-next').addEventListener('click', () => goPage(cur + 1));
+  pgn.querySelectorAll('.pg-num').forEach(btn => {
+    btn.addEventListener('click', () => goPage(parseInt(btn.dataset.p)));
+  });
+}
+
+function goPage(n) {
+  currentPage = n;
+  document.getElementById('grid').innerHTML = '';
+  renderPage(false);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // ── Render grid page ───────────────────────────────────────
@@ -339,7 +385,7 @@ async function renderPage(reset) {
         </div>`;
       grid.querySelector('.btn-clear-filters')?.addEventListener('click', clearAllFilters);
     }
-    document.getElementById('lmw').hidden = true;
+    document.getElementById('pgn').hidden = true;
     updateInfoBar();
     return;
   }
@@ -368,26 +414,23 @@ async function renderPage(reset) {
       el.tabIndex = 0;
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', `Ver detalles de ${p.name}`);
+      el.style.setProperty('--cc', color);
       el.innerHTML = `
-        <div class="c-top" style="--card-color:${color}">
-          <div class="c-bg" style="background: linear-gradient(160deg, ${color}e8, ${color}99)"></div>
-          <div class="c-ring"></div>
-          <div class="c-num">#${String(p.id).padStart(3, '0')}</div>
-          <button class="fav-btn c-fav${isFav ? ' fav-on' : ''}"
-            data-id="${p.id}"
-            aria-pressed="${isFav}"
-            aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">${isFav ? '♥' : '♡'}</button>
-          <img class="c-art"
-            src="${artURL(p.id)}"
-            alt="${p.name}"
-            loading="lazy"
-            onerror="this.src='${sprURL(p.id)}'">
-        </div>
-        <div class="c-bottom">
-          <div class="c-name">${p.name}</div>
+        <span class="c-num">#${String(p.id).padStart(3, '0')}</span>
+        <button class="fav-btn c-fav${isFav ? ' fav-on' : ''}"
+          data-id="${p.id}"
+          aria-pressed="${isFav}"
+          aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">${isFav ? '♥' : '♡'}</button>
+        <img class="c-art"
+          src="${artURL(p.id)}"
+          alt="${p.name}"
+          loading="lazy"
+          onerror="this.src='${sprURL(p.id)}'">
+        <div class="c-info">
           <div class="c-types">
-            ${d.types.map(t => `<span class="tbadge" style="background:${TYPE_COLORS[t.type.name] || '#888'}">${TYPE_ES[t.type.name] || t.type.name}</span>`).join('')}
+            ${d.types.map(t => `<span class="tbadge">${TYPE_ES[t.type.name] || t.type.name}</span>`).join('')}
           </div>
+          <div class="c-name">${p.name}</div>
         </div>
       `;
 
@@ -404,11 +447,7 @@ async function renderPage(reset) {
     }
   }));
 
-  const hasMore = (currentPage + 1) * PAGE_SIZE < filtered.length;
-  const lmw = document.getElementById('lmw');
-  lmw.hidden = !hasMore;
-  document.getElementById('btnMore').disabled = false;
-
+  renderPagination();
   updateInfoBar();
 }
 
@@ -930,11 +969,6 @@ document.getElementById('gs').addEventListener('change', e => {
   loadGeneration(offset, limit);
 });
 
-document.getElementById('btnMore').addEventListener('click', () => {
-  document.getElementById('btnMore').disabled = true;
-  currentPage++;
-  renderPage(false);
-});
 
 document.getElementById('bdrop').addEventListener('click', e => {
   if (e.target === document.getElementById('bdrop')) closeModal();
