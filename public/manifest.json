@@ -1,0 +1,32 @@
+{
+  "name": "Pokédex",
+  "short_name": "Pokédex",
+  "description": "Explora todos los Pokémon — estadísticas, tipos y más",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#e63946",
+  "theme_color": "#e63946",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Buscar Pokémon",
+      "url": "/?search=true",
+      "description": "Busca directamente un Pokémon"
+    }
+  ]
+}
