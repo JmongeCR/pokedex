@@ -1,4 +1,4 @@
-const VERSION = 'pokedex-v2';
+const VERSION = 'pokedex-v3';
 
 // On install: cache the app shell
 self.addEventListener('install', e => {
