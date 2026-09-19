@@ -39,8 +39,6 @@ const PAGE_SIZE = 24;
 let favorites = new Set();
 let showFavsOnly = false;
 
-// Modal race-condition guard: each openModal call gets a unique token;
-// stale async continuations bail out when token !== modalToken.
 let modalToken = 0;
 let lastFocusedElement = null;
 let savedScrollY = 0;
@@ -68,6 +66,15 @@ function toggleFav(id) {
   updateFavUI(id);
 }
 
+function updateFavsToggle() {
+  const btn = document.getElementById('btnFavs');
+  if (!btn) return;
+  const n = favorites.size;
+  btn.innerHTML = n > 0
+    ? `<span aria-hidden="true">♥</span> Favoritos <span class="flt-count">${n}</span>`
+    : '<span aria-hidden="true">♡</span> Favoritos';
+}
+
 function updateFavUI(id) {
   const isFav = favorites.has(id);
 
@@ -86,6 +93,7 @@ function updateFavUI(id) {
     mBtn.innerHTML = isFav ? '♥ Guardado' : '♡ Guardar';
   }
 
+  updateFavsToggle();
   if (showFavsOnly) applyFilters();
 }
 
@@ -95,9 +103,10 @@ function clearAllFilters() {
   showFavsOnly = false;
   document.getElementById('srch').value = '';
 
-  document.querySelectorAll('.chip').forEach(c => {
+  document.querySelectorAll('.chip[data-type]').forEach(c => {
     c.classList.remove('on');
     c.style.cssText = '';
+    c.setAttribute('aria-pressed', 'false');
   });
   const allChip = document.querySelector('.chip[data-type="all"]');
   if (allChip) {
@@ -105,14 +114,13 @@ function clearAllFilters() {
     allChip.style.background = '#6b7080';
     allChip.style.borderColor = 'transparent';
     allChip.style.color = '#fff';
+    allChip.setAttribute('aria-pressed', 'true');
   }
-  const favChip = document.getElementById('favChip');
-  if (favChip) {
-    favChip.classList.remove('on');
-    favChip.style.cssText = '';
-    favChip.setAttribute('aria-pressed', 'false');
-    favChip.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
-  }
+
+  const btnTodos = document.getElementById('btnTodos');
+  const btnFavs  = document.getElementById('btnFavs');
+  if (btnTodos) { btnTodos.classList.add('flt-active');   btnTodos.setAttribute('aria-pressed', 'true'); }
+  if (btnFavs)  { btnFavs.classList.remove('flt-active'); btnFavs.setAttribute('aria-pressed', 'false'); }
 
   applyFilters();
 }
@@ -141,6 +149,18 @@ async function apiFetch(url) {
   const data = await res.json();
   cache.set(url, data);
   return data;
+}
+
+// Resolve Spanish (fallback English) name for an ability
+async function resolveAbilityName(ability) {
+  try {
+    const data = await apiFetch(ability.url);
+    return (data.names.find(n => n.language.name === 'es')
+      || data.names.find(n => n.language.name === 'en'))?.name
+      || ability.name.replace(/-/g, ' ');
+  } catch {
+    return ability.name.replace(/-/g, ' ');
+  }
 }
 
 // ── Scroll lock (iOS-safe) ─────────────────────────────────
@@ -190,6 +210,7 @@ function showToast(msg, duration = 2400) {
   const t = document.createElement('div');
   t.id = 'appToast';
   t.className = 'app-toast';
+  t.setAttribute('role', 'status');
   t.textContent = msg;
   document.body.appendChild(t);
   requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('toast-show')));
@@ -230,7 +251,7 @@ async function loadGeneration(offset, limit) {
     document.getElementById('grid').innerHTML = `
       <div class="empty">
         <div class="empty-icon">⚠️</div>
-        <p>Error al conectar con la API</p>
+        <p>No se pudo conectar con la API</p>
         <small>Verifica tu conexión a internet</small>
       </div>`;
     document.getElementById('lmw').hidden = true;
@@ -285,6 +306,13 @@ async function renderPage(reset) {
   const slice = filtered.slice(start, end);
 
   if (reset && slice.length === 0) {
+    const hasSearch  = !!searchQuery;
+    const hasType    = activeType !== 'all';
+    const activeFilters = [
+      hasSearch && `«${searchQuery}»`,
+      hasType   && TYPE_ES[activeType],
+    ].filter(Boolean).join(' + ');
+
     if (showFavsOnly && favorites.size === 0) {
       grid.innerHTML = `
         <div class="empty">
@@ -292,11 +320,12 @@ async function renderPage(reset) {
           <p>Aún no tienes favoritos</p>
           <small>Toca ♡ en cualquier tarjeta para guardar un Pokémon</small>
         </div>`;
-    } else if (showFavsOnly) {
+    } else if (showFavsOnly && filtered.length === 0) {
       grid.innerHTML = `
         <div class="empty">
           <div class="empty-icon" aria-hidden="true">🔍</div>
-          <p>Ningún favorito coincide con los filtros</p>
+          <p>Ningún favorito coincide con los filtros activos</p>
+          <small>${activeFilters ? `Filtros: ${activeFilters}` : ''}</small>
           <button class="btn-clear-filters">Limpiar filtros</button>
         </div>`;
       grid.querySelector('.btn-clear-filters').addEventListener('click', clearAllFilters);
@@ -305,8 +334,10 @@ async function renderPage(reset) {
         <div class="empty">
           <div class="empty-icon" aria-hidden="true">🔍</div>
           <p>No se encontraron Pokémon</p>
-          <small>Prueba con otro nombre o tipo</small>
+          <small>${activeFilters ? `Filtros activos: ${activeFilters}` : 'Prueba con otro nombre o tipo'}</small>
+          ${activeFilters ? '<button class="btn-clear-filters">Limpiar filtros</button>' : ''}
         </div>`;
+      grid.querySelector('.btn-clear-filters')?.addEventListener('click', clearAllFilters);
     }
     document.getElementById('lmw').hidden = true;
     updateInfoBar();
@@ -338,10 +369,9 @@ async function renderPage(reset) {
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', `Ver detalles de ${p.name}`);
       el.innerHTML = `
-        <div class="c-top">
-          <div class="c-bg" style="background: linear-gradient(145deg, ${color}dd, ${color}88)"></div>
-          <div class="c-deco"></div>
-          <div class="c-deco2"></div>
+        <div class="c-top" style="--card-color:${color}">
+          <div class="c-bg" style="background: linear-gradient(160deg, ${color}e8, ${color}99)"></div>
+          <div class="c-ring"></div>
           <div class="c-num">#${String(p.id).padStart(3, '0')}</div>
           <button class="fav-btn c-fav${isFav ? ' fav-on' : ''}"
             data-id="${p.id}"
@@ -384,7 +414,7 @@ async function renderPage(reset) {
 
 function updateInfoBar() {
   const bar = document.getElementById('infoBar');
-  const favCount = showFavsOnly ? favorites.size : null;
+  const favCount = favorites.size;
   bar.innerHTML = `
     <span class="pill">${filtered.length} Pokémon</span>
     ${activeType !== 'all' ? `<span class="pill" style="background:${TYPE_COLORS[activeType]}22;color:${TYPE_COLORS[activeType]}">${TYPE_ES[activeType]}</span>` : ''}
@@ -413,7 +443,7 @@ function evoConditionLabel(details) {
       return 'Amistad';
     }
     if (d.min_affection) return 'Cariño';
-    if (d.known_move_type?.name) return `Mov. ${d.known_move_type.name}`;
+    if (d.known_move_type?.name) return `Mov. tipo ${TYPE_ES[d.known_move_type.name] || d.known_move_type.name}`;
     if (d.known_move?.name) return `Con ${d.known_move.name.replace(/-/g, ' ')}`;
     if (d.location?.name) return `En ${d.location.name.replace(/-/g, ' ')}`;
     if (d.held_item?.name) return `Llevar ${d.held_item.name.replace(/-/g, ' ')}`;
@@ -437,10 +467,10 @@ function evoConditionLabel(details) {
   if (t === 'spin') return 'Dar vueltas';
   if (t === 'tower-of-darkness') return 'Torre Siniestra';
   if (t === 'tower-of-waters') return 'Torre del Agua';
-  if (t === 'three-critical-hits') return '3 golpes críticos';
+  if (t === 'three-critical-hits') return '3 críticos';
   if (t === 'take-damage') return 'Recibir daño';
-  if (t === 'agile-style-move') return 'Movimiento ágil';
-  if (t === 'strong-style-move') return 'Movimiento fuerte';
+  if (t === 'agile-style-move') return 'Mov. ágil';
+  if (t === 'strong-style-move') return 'Mov. fuerte';
   if (t === 'other') return null;
   return t?.replace(/-/g, ' ') || null;
 }
@@ -449,7 +479,6 @@ function chainNodeCount(node) {
   return 1 + node.evolves_to.reduce((s, e) => s + chainNodeCount(e), 0);
 }
 
-// Returns HTML string. currentId highlights the currently viewed pokemon.
 function renderEvoNode(chain, currentId) {
   const id = idFromUrl(chain.species.url);
   const isCurrent = id === currentId;
@@ -478,7 +507,7 @@ function renderEvoNode(chain, currentId) {
     ${renderEvoNode(next, currentId)}`;
   }
 
-  // Branching evolution (Eevee, Tyrogue, Wurmple, etc.)
+  // Branching (Eevee, Tyrogue, Wurmple, etc.)
   const branches = chain.evolves_to.map(next => {
     const cond = evoConditionLabel(next.evolution_details);
     return `<div class="evo-branch">
@@ -538,7 +567,7 @@ async function loadEvolutionSection(species, currentId, token) {
 async function openModal(id, opts = {}) {
   const token = ++modalToken;
   const bdrop = document.getElementById('bdrop');
-  const mbox = document.getElementById('mbox');
+  const mbox  = document.getElementById('mbox');
 
   const wasOpen = !bdrop.hidden;
   if (!wasOpen) {
@@ -551,7 +580,13 @@ async function openModal(id, opts = {}) {
   mbox.innerHTML = `<div class="spin-wrap"><div class="spinner"></div><span class="spin-txt">Cargando…</span></div>`;
 
   if (opts.skipHistory !== true) {
-    history.pushState({ pkdx: true, pokemonId: id }, '', '?p=' + id);
+    if (!wasOpen) {
+      // First open from list: push a history entry (Back will close the modal)
+      history.pushState({ pkdx: true, pokemonId: id }, '', '?p=' + id);
+    } else {
+      // Evolution navigation: replace current entry so closing goes to the list, not prev Pokémon
+      history.replaceState({ pkdx: history.state?.pkdx ?? false, pokemonId: id }, '', '?p=' + id);
+    }
   }
 
   try {
@@ -562,12 +597,18 @@ async function openModal(id, opts = {}) {
     try { species = await apiFetch(d.species.url); } catch {}
     if (token !== modalToken) return;
 
+    // Fetch Spanish ability names (parallel, cached)
+    const abilNames = await Promise.all(
+      d.abilities.map(a => resolveAbilityName(a.ability))
+    );
+    if (token !== modalToken) return;
+
     const genus = (species?.genera?.find(g => g.language.name === 'es')
       || species?.genera?.find(g => g.language.name === 'en'))?.genus || '';
 
     const desc = (species?.flavor_text_entries?.find(e => e.language.name === 'es')
       || species?.flavor_text_entries?.find(e => e.language.name === 'en'))
-      ?.flavor_text?.replace(/[\f\n]/g, ' ') || '';
+      ?.flavor_text?.replace(/[\f\n\r­’]/g, ' ').replace(/\s+/g, ' ').trim() || '';
 
     const primaryType = d.types[0].type.name;
     const color = TYPE_COLORS[primaryType] || '#888';
@@ -575,12 +616,11 @@ async function openModal(id, opts = {}) {
     const isFav = favorites.has(id);
 
     mbox.innerHTML = `
-      <div class="m-hero">
-        <div class="m-bg" style="background: linear-gradient(160deg, ${color}f0, ${color}99)"></div>
+      <div class="m-hero" style="--hero-color:${color}">
+        <div class="m-bg" style="background: linear-gradient(160deg, ${color}f2, ${color}aa)"></div>
         <div class="m-ring"></div>
-        <div class="m-ring2"></div>
         <button class="m-close" id="mClose" aria-label="Cerrar ficha">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
@@ -590,61 +630,83 @@ async function openModal(id, opts = {}) {
           ${d.types.map(t => `<span class="m-badge" style="background:${TYPE_COLORS[t.type.name] || '#888'}">${TYPE_ES[t.type.name] || t.type.name}</span>`).join('')}
         </div>
       </div>
-      <div class="m-body">
-        <div class="m-name">${d.name}</div>
-        ${genus ? `<div class="m-genus">${genus}</div>` : ''}
 
-        <div class="m-actions">
-          <button class="fav-btn m-fav${isFav ? ' fav-on' : ''}" id="mFavBtn" data-id="${id}"
-            aria-pressed="${isFav}"
-            aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">
-            ${isFav ? '♥ Guardado' : '♡ Guardar'}
-          </button>
-          <button class="share-btn" id="mShareBtn" aria-label="Compartir enlace de ${d.name}">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-            </svg>
-            Compartir
-          </button>
+      <div class="m-body">
+        <div class="m-head-row">
+          <div>
+            <div class="m-name">${d.name}</div>
+            ${genus ? `<div class="m-genus">${genus}</div>` : ''}
+          </div>
+          <div class="m-actions">
+            <button class="m-fav${isFav ? ' fav-on' : ''}" id="mFavBtn" data-id="${id}"
+              aria-pressed="${isFav}"
+              aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">
+              ${isFav ? '♥ Guardado' : '♡ Guardar'}
+            </button>
+            <button class="share-btn" id="mShareBtn" aria-label="Compartir enlace de ${d.name}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+              </svg>
+              Compartir
+            </button>
+          </div>
         </div>
 
-        ${desc ? `<div class="m-desc" style="border-color:${color}">${desc}</div>` : ''}
+        ${desc ? `<div class="m-desc" style="--desc-color:${color}">${desc}</div>` : ''}
 
         <div class="m-grid">
-          <div class="m-cell"><div class="m-label">Altura</div><div class="m-val">${(d.height / 10).toFixed(1)} m</div></div>
-          <div class="m-cell"><div class="m-label">Peso</div><div class="m-val">${(d.weight / 10).toFixed(1)} kg</div></div>
-          <div class="m-cell"><div class="m-label">Exp. base</div><div class="m-val">${d.base_experience ?? '—'}</div></div>
-          <div class="m-cell"><div class="m-label">Total</div><div class="m-val" style="color:${color}">${totalStats}</div></div>
+          <div class="m-cell">
+            <div class="m-label">Altura</div>
+            <div class="m-val">${(d.height / 10).toFixed(1)} m</div>
+          </div>
+          <div class="m-cell">
+            <div class="m-label">Peso</div>
+            <div class="m-val">${(d.weight / 10).toFixed(1)} kg</div>
+          </div>
+          <div class="m-cell">
+            <div class="m-label">Exp. base</div>
+            <div class="m-val">${d.base_experience ?? '—'}</div>
+          </div>
+          <div class="m-cell">
+            <div class="m-label">Total stats</div>
+            <div class="m-val" style="color:${color}">${totalStats}</div>
+          </div>
         </div>
 
-        <div class="sec-title">Habilidades</div>
-        <div class="abil-list">
-          ${d.abilities.map(a => `
-            <span class="abil${a.is_hidden ? ' hidden' : ''}">
-              ${a.ability.name.replace(/-/g, ' ')}
-              ${a.is_hidden ? '<small style="opacity:.65"> (oculta)</small>' : ''}
-            </span>`).join('')}
+        <div class="m-section">
+          <div class="sec-title">Habilidades</div>
+          <div class="abil-list">
+            ${d.abilities.map((a, i) => `
+              <span class="abil${a.is_hidden ? ' hidden' : ''}">
+                ${abilNames[i]}
+                ${a.is_hidden ? '<span class="abil-hidden-tag">oculta</span>' : ''}
+              </span>`).join('')}
+          </div>
         </div>
 
-        <div class="sec-title">Estadísticas base</div>
-        ${d.stats.map(s => {
-          const pct = Math.min(100, Math.round(s.base_stat / 255 * 100));
-          const col = STAT_COLORS[s.stat.name] || color;
-          return `
-            <div class="stat-row">
-              <span class="stat-name">${STAT_LABELS[s.stat.name] || s.stat.name}</span>
-              <span class="stat-val">${s.base_stat}</span>
-              <div class="stat-track">
-                <div class="stat-fill" style="width:${pct}%; background:${col}"></div>
-              </div>
-            </div>`;
-        }).join('')}
+        <div class="m-section">
+          <div class="sec-title">Estadísticas base</div>
+          ${d.stats.map(s => {
+            const pct = Math.min(100, Math.round(s.base_stat / 255 * 100));
+            const col = STAT_COLORS[s.stat.name] || color;
+            return `
+              <div class="stat-row">
+                <span class="stat-name">${STAT_LABELS[s.stat.name] || s.stat.name}</span>
+                <span class="stat-val">${s.base_stat}</span>
+                <div class="stat-track">
+                  <div class="stat-fill" style="width:${pct}%;background:${col}"></div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
 
-        <div class="sec-title">Evolución</div>
-        <div id="evoSection">
-          <div class="spin-wrap-sm"><div class="spinner-sm"></div></div>
+        <div class="m-section">
+          <div class="sec-title">Evolución</div>
+          <div id="evoSection">
+            <div class="spin-wrap-sm"><div class="spinner-sm"></div></div>
+          </div>
         </div>
       </div>
     `;
@@ -653,8 +715,7 @@ async function openModal(id, opts = {}) {
     document.getElementById('mFavBtn').addEventListener('click', () => toggleFav(id));
     document.getElementById('mShareBtn').addEventListener('click', () => sharePokemon(id, d.name));
 
-    const mbox2 = document.getElementById('mbox');
-    installFocusTrap(mbox2);
+    installFocusTrap(document.getElementById('mbox'));
     document.getElementById('mClose').focus();
 
     loadEvolutionSection(species, id, token);
@@ -662,17 +723,20 @@ async function openModal(id, opts = {}) {
   } catch {
     if (token !== modalToken) return;
     mbox.innerHTML = `<div class="spin-wrap">
-      <p style="color:var(--muted); font-weight:600">No se pudo cargar este Pokémon</p>
+      <p style="color:var(--muted);font-weight:700;text-align:center">No se pudo cargar este Pokémon</p>
       ${!navigator.onLine ? '<small style="color:var(--muted)">Verifica tu conexión a internet</small>' : ''}
+      <button class="evo-retry" style="margin-top:8px" onclick="openModal(${id})">Reintentar</button>
     </div>`;
   }
 }
 
 function closeModal() {
+  // If we own the current history entry, pop it (popstate → closeModalDOM)
   if (history.state?.pkdx) {
     history.back();
     return;
   }
+  // Direct link or replace-only entry: clean URL without adding history
   const url = new URL(location.href);
   url.searchParams.delete('p');
   history.replaceState({}, '', url);
@@ -717,7 +781,7 @@ async function sharePokemon(id, name) {
       await navigator.share({ title: `Pokédex — ${name}`, url });
       return;
     } catch (e) {
-      if (e.name === 'AbortError') return;
+      if (e.name === 'AbortError') return; // usuario canceló — no copiar
     }
   }
   try {
@@ -728,10 +792,55 @@ async function sharePokemon(id, name) {
   }
 }
 
-// ── Type chips ─────────────────────────────────────────────
+// ── Type chips / Filter bar ────────────────────────────────
 function buildTypeChips() {
   const bar = document.getElementById('tbar');
 
+  // ── Todos / Favoritos toggle group ──────────────────────
+  const grp = document.createElement('div');
+  grp.className = 'filter-grp';
+  grp.setAttribute('role', 'group');
+  grp.setAttribute('aria-label', 'Vista de favoritos');
+
+  const btnTodos = document.createElement('button');
+  btnTodos.className = 'flt-toggle flt-active';
+  btnTodos.id = 'btnTodos';
+  btnTodos.setAttribute('aria-pressed', 'true');
+  btnTodos.textContent = 'Todos';
+
+  const btnFavs = document.createElement('button');
+  btnFavs.className = 'flt-toggle';
+  btnFavs.id = 'btnFavs';
+  btnFavs.setAttribute('aria-pressed', 'false');
+  btnFavs.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
+
+  btnTodos.addEventListener('click', () => {
+    if (!showFavsOnly) return;
+    showFavsOnly = false;
+    btnTodos.classList.add('flt-active');    btnTodos.setAttribute('aria-pressed', 'true');
+    btnFavs.classList.remove('flt-active'); btnFavs.setAttribute('aria-pressed', 'false');
+    applyFilters();
+  });
+
+  btnFavs.addEventListener('click', () => {
+    if (showFavsOnly) return;
+    showFavsOnly = true;
+    btnFavs.classList.add('flt-active');     btnFavs.setAttribute('aria-pressed', 'true');
+    btnTodos.classList.remove('flt-active'); btnTodos.setAttribute('aria-pressed', 'false');
+    applyFilters();
+  });
+
+  grp.appendChild(btnTodos);
+  grp.appendChild(btnFavs);
+  bar.appendChild(grp);
+
+  // ── Visual separator ─────────────────────────────────────
+  const sep = document.createElement('div');
+  sep.className = 'chip-sep';
+  sep.setAttribute('aria-hidden', 'true');
+  bar.appendChild(sep);
+
+  // ── Type chips ───────────────────────────────────────────
   function makeChip(label, type, color) {
     const btn = document.createElement('button');
     btn.className = 'chip' + (type === 'all' ? ' on' : '');
@@ -775,37 +884,7 @@ function buildTypeChips() {
     bar.appendChild(btn);
   }
 
-  makeChip('Todos', 'all', '#6b7080');
-
-  // Favorites toggle chip (orthogonal to type filter)
-  const favChip = document.createElement('button');
-  favChip.className = 'chip chip-fav';
-  favChip.id = 'favChip';
-  favChip.setAttribute('aria-pressed', 'false');
-  favChip.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
-  favChip.addEventListener('click', () => {
-    showFavsOnly = !showFavsOnly;
-    favChip.setAttribute('aria-pressed', String(showFavsOnly));
-    favChip.classList.toggle('on', showFavsOnly);
-    if (showFavsOnly) {
-      favChip.style.background = 'var(--red)';
-      favChip.style.borderColor = 'transparent';
-      favChip.style.color = '#fff';
-      favChip.innerHTML = '<span aria-hidden="true">♥</span> Favoritos';
-    } else {
-      favChip.style.cssText = '';
-      favChip.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
-    }
-    applyFilters();
-  });
-  bar.appendChild(favChip);
-
-  // Visual separator
-  const sep = document.createElement('div');
-  sep.className = 'chip-sep';
-  sep.setAttribute('aria-hidden', 'true');
-  bar.appendChild(sep);
-
+  makeChip('Tipos', 'all', '#6b7080');
   Object.entries(TYPE_ES).forEach(([key, label]) =>
     makeChip(label, key, TYPE_COLORS[key] || '#888')
   );
@@ -829,10 +908,10 @@ document.getElementById('gs').addEventListener('change', e => {
   showFavsOnly = false;
   document.getElementById('srch').value = '';
 
-  document.querySelectorAll('.chip').forEach(c => {
+  document.querySelectorAll('.chip[data-type]').forEach(c => {
     c.classList.remove('on');
     c.style.cssText = '';
-    c.removeAttribute('aria-pressed');
+    c.setAttribute('aria-pressed', 'false');
   });
   const allChip = document.querySelector('.chip[data-type="all"]');
   if (allChip) {
@@ -842,11 +921,11 @@ document.getElementById('gs').addEventListener('change', e => {
     allChip.style.color = '#fff';
     allChip.setAttribute('aria-pressed', 'true');
   }
-  const favChip = document.getElementById('favChip');
-  if (favChip) {
-    favChip.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
-    favChip.setAttribute('aria-pressed', 'false');
-  }
+
+  const btnTodos = document.getElementById('btnTodos');
+  const btnFavs  = document.getElementById('btnFavs');
+  if (btnTodos) { btnTodos.classList.add('flt-active');   btnTodos.setAttribute('aria-pressed', 'true'); }
+  if (btnFavs)  { btnFavs.classList.remove('flt-active'); btnFavs.setAttribute('aria-pressed', 'false'); }
 
   loadGeneration(offset, limit);
 });
@@ -892,9 +971,9 @@ document.getElementById('themeToggle').addEventListener('click', () => applyThem
 loadFavorites();
 initTheme();
 buildTypeChips();
+updateFavsToggle();
 loadGeneration(0, 151);
 
-// Open modal immediately if landing on a direct ?p= URL
 const _initialId = getPokemonIdFromUrl();
 if (_initialId) openModal(_initialId, { skipHistory: true });
 
@@ -976,4 +1055,4 @@ function showOfflineToast(offline) {
   }
 }
 window.addEventListener('offline', () => showOfflineToast(true));
-window.addEventListener('online', () => showOfflineToast(false));
+window.addEventListener('online',  () => showOfflineToast(false));
