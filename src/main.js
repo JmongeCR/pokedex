@@ -428,7 +428,7 @@ async function renderPage(reset) {
           onerror="this.src='${sprURL(p.id)}'">
         <div class="c-info">
           <div class="c-types">
-            ${d.types.map(t => `<span class="tbadge">${TYPE_ES[t.type.name] || t.type.name}</span>`).join('')}
+            ${d.types.map(t => `<span class="tbadge" style="--tc:${TYPE_COLORS[t.type.name] || '#555'}">${TYPE_ES[t.type.name] || t.type.name}</span>`).join('')}
           </div>
           <div class="c-name">${p.name}</div>
         </div>
@@ -885,7 +885,10 @@ function buildTypeChips() {
     btn.className = 'chip' + (type === 'all' ? ' on' : '');
     btn.dataset.type = type;
     btn.setAttribute('aria-pressed', type === 'all' ? 'true' : 'false');
-    btn.innerHTML = `<span class="dot" style="${type !== 'all' ? `background:${color}` : ''}"></span>${label}`;
+    btn.style.setProperty('--chip-c', color);
+    btn.innerHTML = type === 'all'
+      ? label
+      : `<span class="chip-dot" style="background:${color}"></span>${label}`;
     if (type === 'all') {
       btn.style.background = '#6b7080';
       btn.style.borderColor = 'transparent';
