@@ -67,12 +67,11 @@ function toggleFav(id) {
 }
 
 function updateFavsToggle() {
-  const btn = document.getElementById('btnFavs');
-  if (!btn) return;
+  const badge = document.getElementById('favsCount');
+  const mfc = document.getElementById('mobileFilterCount');
   const n = favorites.size;
-  btn.innerHTML = n > 0
-    ? `<span aria-hidden="true">♥</span> Favoritos <span class="flt-count">${n}</span>`
-    : '<span aria-hidden="true">♡</span> Favoritos';
+  if (badge) { badge.textContent = n; badge.hidden = n === 0; }
+  if (mfc) { mfc.textContent = n; mfc.hidden = n === 0; }
 }
 
 function updateFavUI(id) {
@@ -103,24 +102,16 @@ function clearAllFilters() {
   showFavsOnly = false;
   document.getElementById('srch').value = '';
 
-  document.querySelectorAll('.chip[data-type]').forEach(c => {
-    c.classList.remove('on');
-    c.style.cssText = '';
-    c.setAttribute('aria-pressed', 'false');
+  document.querySelectorAll('.type-pill').forEach(p => {
+    p.classList.remove('is-active'); p.setAttribute('aria-pressed', 'false');
   });
-  const allChip = document.querySelector('.chip[data-type="all"]');
-  if (allChip) {
-    allChip.classList.add('on');
-    allChip.style.background = '#6b7080';
-    allChip.style.borderColor = 'transparent';
-    allChip.style.color = '#fff';
-    allChip.setAttribute('aria-pressed', 'true');
-  }
+  const allPill = document.querySelector('.type-pill[data-type="all"]');
+  if (allPill) { allPill.classList.add('is-active'); allPill.setAttribute('aria-pressed', 'true'); }
 
-  const btnTodos = document.getElementById('btnTodos');
-  const btnFavs  = document.getElementById('btnFavs');
-  if (btnTodos) { btnTodos.classList.add('flt-active');   btnTodos.setAttribute('aria-pressed', 'true'); }
-  if (btnFavs)  { btnFavs.classList.remove('flt-active'); btnFavs.setAttribute('aria-pressed', 'false'); }
+  const btnExplore = document.getElementById('btnExplore');
+  const btnFavs    = document.getElementById('btnFavs');
+  if (btnExplore) { btnExplore.classList.add('is-active');    btnExplore.setAttribute('aria-pressed', 'true'); }
+  if (btnFavs)    { btnFavs.classList.remove('is-active');    btnFavs.setAttribute('aria-pressed', 'false'); }
 
   applyFilters();
 }
@@ -414,23 +405,30 @@ async function renderPage(reset) {
       el.tabIndex = 0;
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', `Ver detalles de ${p.name}`);
-      el.style.setProperty('--cc', color);
       el.innerHTML = `
-        <span class="c-num">#${String(p.id).padStart(3, '0')}</span>
-        <button class="fav-btn c-fav${isFav ? ' fav-on' : ''}"
-          data-id="${p.id}"
-          aria-pressed="${isFav}"
-          aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">${isFav ? '♥' : '♡'}</button>
-        <img class="c-art"
-          src="${artURL(p.id)}"
-          alt="${p.name}"
-          loading="lazy"
-          onerror="this.src='${sprURL(p.id)}'">
-        <div class="c-info">
-          <div class="c-types">
-            ${d.types.map(t => `<span class="tbadge" style="--tc:${TYPE_COLORS[t.type.name] || '#555'}">${TYPE_ES[t.type.name] || t.type.name}</span>`).join('')}
-          </div>
+        <div class="c-header">
+          <span class="c-num">#${String(p.id).padStart(3, '0')}</span>
+          <button class="fav-btn c-fav${isFav ? ' fav-on' : ''}"
+            data-id="${p.id}"
+            aria-pressed="${isFav}"
+            aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">${isFav ? '♥' : '♡'}</button>
+        </div>
+        <div class="c-art-zone">
+          <div class="c-circle" style="--cc-soft:${color}20"></div>
+          <img class="c-art"
+            src="${artURL(p.id)}"
+            alt="${p.name}"
+            loading="lazy"
+            onerror="this.src='${sprURL(p.id)}'">
+        </div>
+        <div class="c-body">
           <div class="c-name">${p.name}</div>
+          <div class="c-types">
+            ${d.types.map(t => {
+              const tc = TYPE_COLORS[t.type.name] || '#888';
+              return `<span class="tbadge" style="--tc:${tc}; --tc-bg:${tc}22">${TYPE_ES[t.type.name] || t.type.name}</span>`;
+            }).join('')}
+          </div>
         </div>
       `;
 
@@ -455,10 +453,10 @@ function updateInfoBar() {
   const bar = document.getElementById('infoBar');
   const favCount = favorites.size;
   bar.innerHTML = `
-    <span class="pill">${filtered.length} Pokémon</span>
-    ${activeType !== 'all' ? `<span class="pill" style="background:${TYPE_COLORS[activeType]}22;color:${TYPE_COLORS[activeType]}">${TYPE_ES[activeType]}</span>` : ''}
-    ${searchQuery ? `<span class="pill">«${searchQuery}»</span>` : ''}
-    ${showFavsOnly ? `<span class="pill pill-fav">♥ ${favCount} favorito${favCount !== 1 ? 's' : ''}</span>` : ''}
+    <span class="rb-count">${filtered.length} Pokémon</span>
+    ${activeType !== 'all' ? `<span class="rb-tag" style="background:${TYPE_COLORS[activeType]}18;color:${TYPE_COLORS[activeType]}">${TYPE_ES[activeType]}</span>` : ''}
+    ${searchQuery ? `<span class="rb-tag">«${searchQuery}»</span>` : ''}
+    ${showFavsOnly ? `<span class="rb-tag rb-tag-fav">♥ ${favCount} favorito${favCount !== 1 ? 's' : ''}</span>` : ''}
   `;
 }
 
@@ -655,44 +653,43 @@ async function openModal(id, opts = {}) {
     const isFav = favorites.has(id);
 
     mbox.innerHTML = `
-      <div class="m-hero" style="--hero-color:${color}">
-        <div class="m-bg" style="background: linear-gradient(160deg, ${color}f2, ${color}aa)"></div>
-        <div class="m-ring"></div>
+      <div class="m-visual" style="--mv-color:${color}">
         <button class="m-close" id="mClose" aria-label="Cerrar ficha">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
+        <div class="m-art-zone">
+          <div class="m-circle" style="background:${color}22"></div>
+          <img class="m-art" src="${artURL(id)}" alt="${d.name}" onerror="this.src='${sprURL(id)}'">
+        </div>
         <div class="m-id">#${String(id).padStart(3, '0')}</div>
-        <img class="m-art" src="${artURL(id)}" alt="${d.name}" onerror="this.src='${sprURL(id)}'">
-        <div class="m-bds">
-          ${d.types.map(t => `<span class="m-badge" style="background:${TYPE_COLORS[t.type.name] || '#888'}">${TYPE_ES[t.type.name] || t.type.name}</span>`).join('')}
+        <div class="m-name">${d.name}</div>
+        ${genus ? `<div class="m-genus">${genus}</div>` : ''}
+        <div class="m-types">
+          ${d.types.map(t => {
+            const tc = TYPE_COLORS[t.type.name] || '#888';
+            return `<span class="tbadge" style="--tc:${tc}; --tc-bg:${tc}22">${TYPE_ES[t.type.name] || t.type.name}</span>`;
+          }).join('')}
+        </div>
+        <div class="m-actions">
+          <button class="m-fav${isFav ? ' fav-on' : ''}" id="mFavBtn" data-id="${id}"
+            aria-pressed="${isFav}"
+            aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">
+            ${isFav ? '♥ Guardado' : '♡ Guardar'}
+          </button>
+          <button class="share-btn" id="mShareBtn" aria-label="Compartir enlace de ${d.name}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+            Compartir
+          </button>
         </div>
       </div>
 
-      <div class="m-body">
-        <div class="m-head-row">
-          <div>
-            <div class="m-name">${d.name}</div>
-            ${genus ? `<div class="m-genus">${genus}</div>` : ''}
-          </div>
-          <div class="m-actions">
-            <button class="m-fav${isFav ? ' fav-on' : ''}" id="mFavBtn" data-id="${id}"
-              aria-pressed="${isFav}"
-              aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar como favorito'}">
-              ${isFav ? '♥ Guardado' : '♡ Guardar'}
-            </button>
-            <button class="share-btn" id="mShareBtn" aria-label="Compartir enlace de ${d.name}">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-              </svg>
-              Compartir
-            </button>
-          </div>
-        </div>
-
+      <div class="m-info">
         ${desc ? `<div class="m-desc" style="--desc-color:${color}">${desc}</div>` : ''}
 
         <div class="m-grid">
@@ -832,81 +829,26 @@ async function sharePokemon(id, name) {
 }
 
 // ── Type chips / Filter bar ────────────────────────────────
-function buildTypeChips() {
-  const bar = document.getElementById('tbar');
+function buildTypeGrid() {
+  const grid = document.getElementById('typeGrid');
+  if (!grid) return;
 
-  // ── Todos / Favoritos toggle group ──────────────────────
-  const grp = document.createElement('div');
-  grp.className = 'filter-grp';
-  grp.setAttribute('role', 'group');
-  grp.setAttribute('aria-label', 'Vista de favoritos');
-
-  const btnTodos = document.createElement('button');
-  btnTodos.className = 'flt-toggle flt-active';
-  btnTodos.id = 'btnTodos';
-  btnTodos.setAttribute('aria-pressed', 'true');
-  btnTodos.textContent = 'Todos';
-
-  const btnFavs = document.createElement('button');
-  btnFavs.className = 'flt-toggle';
-  btnFavs.id = 'btnFavs';
-  btnFavs.setAttribute('aria-pressed', 'false');
-  btnFavs.innerHTML = '<span aria-hidden="true">♡</span> Favoritos';
-
-  btnTodos.addEventListener('click', () => {
-    if (!showFavsOnly) return;
-    showFavsOnly = false;
-    btnTodos.classList.add('flt-active');    btnTodos.setAttribute('aria-pressed', 'true');
-    btnFavs.classList.remove('flt-active'); btnFavs.setAttribute('aria-pressed', 'false');
-    applyFilters();
-  });
-
-  btnFavs.addEventListener('click', () => {
-    if (showFavsOnly) return;
-    showFavsOnly = true;
-    btnFavs.classList.add('flt-active');     btnFavs.setAttribute('aria-pressed', 'true');
-    btnTodos.classList.remove('flt-active'); btnTodos.setAttribute('aria-pressed', 'false');
-    applyFilters();
-  });
-
-  grp.appendChild(btnTodos);
-  grp.appendChild(btnFavs);
-  bar.appendChild(grp);
-
-  // ── Visual separator ─────────────────────────────────────
-  const sep = document.createElement('div');
-  sep.className = 'chip-sep';
-  sep.setAttribute('aria-hidden', 'true');
-  bar.appendChild(sep);
-
-  // ── Type chips ───────────────────────────────────────────
-  function makeChip(label, type, color) {
+  function makePill(label, type, color) {
     const btn = document.createElement('button');
-    btn.className = 'chip' + (type === 'all' ? ' on' : '');
+    btn.className = 'type-pill' + (type === 'all' ? ' is-active' : '');
     btn.dataset.type = type;
     btn.setAttribute('aria-pressed', type === 'all' ? 'true' : 'false');
-    btn.style.setProperty('--chip-c', color);
-    btn.innerHTML = type === 'all'
-      ? label
-      : `<span class="chip-dot" style="background:${color}"></span>${label}`;
-    if (type === 'all') {
-      btn.style.background = '#6b7080';
-      btn.style.borderColor = 'transparent';
-      btn.style.color = '#fff';
-    }
+    btn.style.setProperty('--pc', color);
+    btn.textContent = label;
 
     btn.addEventListener('click', async () => {
       if (activeType === type) return;
 
-      document.querySelectorAll('.chip[data-type]').forEach(c => {
-        c.classList.remove('on');
-        c.style.cssText = '';
-        c.setAttribute('aria-pressed', 'false');
+      document.querySelectorAll('.type-pill').forEach(p => {
+        p.classList.remove('is-active');
+        p.setAttribute('aria-pressed', 'false');
       });
-      btn.classList.add('on');
-      btn.style.background = color;
-      btn.style.borderColor = 'transparent';
-      btn.style.color = '#fff';
+      btn.classList.add('is-active');
       btn.setAttribute('aria-pressed', 'true');
 
       activeType = type;
@@ -923,12 +865,12 @@ function buildTypeChips() {
       applyFilters();
     });
 
-    bar.appendChild(btn);
+    grid.appendChild(btn);
   }
 
-  makeChip('Tipos', 'all', '#6b7080');
+  makePill('Todos', 'all', '#6b7080');
   Object.entries(TYPE_ES).forEach(([key, label]) =>
-    makeChip(label, key, TYPE_COLORS[key] || '#888')
+    makePill(label, key, TYPE_COLORS[key] || '#888')
   );
 }
 
@@ -950,24 +892,17 @@ document.getElementById('gs').addEventListener('change', e => {
   showFavsOnly = false;
   document.getElementById('srch').value = '';
 
-  document.querySelectorAll('.chip[data-type]').forEach(c => {
-    c.classList.remove('on');
-    c.style.cssText = '';
-    c.setAttribute('aria-pressed', 'false');
+  document.querySelectorAll('.type-pill').forEach(p => {
+    p.classList.remove('is-active');
+    p.setAttribute('aria-pressed', 'false');
   });
-  const allChip = document.querySelector('.chip[data-type="all"]');
-  if (allChip) {
-    allChip.classList.add('on');
-    allChip.style.background = '#6b7080';
-    allChip.style.borderColor = 'transparent';
-    allChip.style.color = '#fff';
-    allChip.setAttribute('aria-pressed', 'true');
-  }
+  const allPill = document.querySelector('.type-pill[data-type="all"]');
+  if (allPill) { allPill.classList.add('is-active'); allPill.setAttribute('aria-pressed', 'true'); }
 
-  const btnTodos = document.getElementById('btnTodos');
-  const btnFavs  = document.getElementById('btnFavs');
-  if (btnTodos) { btnTodos.classList.add('flt-active');   btnTodos.setAttribute('aria-pressed', 'true'); }
-  if (btnFavs)  { btnFavs.classList.remove('flt-active'); btnFavs.setAttribute('aria-pressed', 'false'); }
+  const btnExplore = document.getElementById('btnExplore');
+  const btnFavs    = document.getElementById('btnFavs');
+  if (btnExplore) { btnExplore.classList.add('is-active');  btnExplore.setAttribute('aria-pressed', 'true'); }
+  if (btnFavs)    { btnFavs.classList.remove('is-active');  btnFavs.setAttribute('aria-pressed', 'false'); }
 
   loadGeneration(offset, limit);
 });
@@ -1004,10 +939,60 @@ function initTheme() {
 
 document.getElementById('themeToggle').addEventListener('click', () => applyTheme(!isDark()));
 
+// ── Nav tabs ───────────────────────────────────────────────
+{
+  const btnExplore = document.getElementById('btnExplore');
+  const btnFavs    = document.getElementById('btnFavs');
+
+  btnExplore?.addEventListener('click', () => {
+    if (!showFavsOnly) return;
+    showFavsOnly = false;
+    btnExplore.classList.add('is-active');  btnExplore.setAttribute('aria-pressed', 'true');
+    btnFavs.classList.remove('is-active'); btnFavs.setAttribute('aria-pressed', 'false');
+    applyFilters();
+  });
+
+  btnFavs?.addEventListener('click', () => {
+    if (showFavsOnly) return;
+    showFavsOnly = true;
+    btnFavs.classList.add('is-active');      btnFavs.setAttribute('aria-pressed', 'true');
+    btnExplore.classList.remove('is-active'); btnExplore.setAttribute('aria-pressed', 'false');
+    applyFilters();
+  });
+}
+
+// ── Mobile sidebar ─────────────────────────────────────────
+{
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  const openBtn  = document.getElementById('mobileFilterBtn');
+  const closeBtn = document.getElementById('sbClose');
+  const clearBtn = document.getElementById('sbClear');
+
+  function openSidebar() {
+    sidebar?.classList.add('sb-open');
+    if (backdrop) backdrop.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    sidebar?.classList.remove('sb-open');
+    if (backdrop) backdrop.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  openBtn?.addEventListener('click', openSidebar);
+  closeBtn?.addEventListener('click', closeSidebar);
+  backdrop?.addEventListener('click', closeSidebar);
+  clearBtn?.addEventListener('click', () => { clearAllFilters(); closeSidebar(); });
+}
+
+// ── Sidebar clear (desktop) ────────────────────────────────
+document.getElementById('sbClear')?.addEventListener('click', clearAllFilters);
+
 // ── Init ───────────────────────────────────────────────────
 loadFavorites();
 initTheme();
-buildTypeChips();
+buildTypeGrid();
 updateFavsToggle();
 loadGeneration(0, 151);
 

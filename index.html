@@ -5,24 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Pokédex</title>
 
-  <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#e63946">
+  <meta name="theme-color" content="#E63946">
   <meta name="mobile-web-app-capable" content="yes">
-
-  <!-- iOS -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Pokédex">
   <link rel="apple-touch-icon" href="/icon.svg">
-
-  <!-- SEO / Share -->
   <meta name="description" content="Explora todos los Pokémon — estadísticas, tipos y más">
   <meta name="color-scheme" content="light dark">
-
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
@@ -31,52 +26,100 @@
   <div class="hdr-in">
     <div class="logo">
       <div class="pokeball"></div>
-      <span>Pokédex</span>
+      <span class="logo-text">Pokédex</span>
     </div>
-    <div class="search-wrap">
-      <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/>
-      </svg>
-      <input id="srch" type="search" placeholder="Buscar Pokémon..." autocomplete="off" autocorrect="off">
-    </div>
-    <select id="gs" aria-label="Seleccionar generación">
-      <option value="0,151">Gen I</option>
-      <option value="151,100">Gen II</option>
-      <option value="251,135">Gen III</option>
-      <option value="386,107">Gen IV</option>
-      <option value="493,156">Gen V</option>
-      <option value="649,72">Gen VI</option>
-      <option value="721,88">Gen VII</option>
-      <option value="809,96">Gen VIII</option>
-      <option value="905,120">Gen IX</option>
-    </select>
-    <button id="themeToggle" aria-label="Cambiar tema" title="Cambiar tema">
-      <svg id="iconSun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+    <nav class="hdr-nav" role="navigation" aria-label="Vistas">
+      <button id="btnExplore" class="nav-tab is-active" aria-pressed="true">Explorar</button>
+      <button id="btnFavs" class="nav-tab" aria-pressed="false">
+        Favoritos
+        <span class="nav-badge" id="favsCount" hidden></span>
+      </button>
+    </nav>
+    <button id="themeToggle" class="icon-btn" aria-label="Cambiar tema" title="Cambiar tema">
+      <svg id="iconSun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <circle cx="12" cy="12" r="5"/>
         <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
         <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
         <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
         <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
       </svg>
-      <svg id="iconMoon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="display:none">
+      <svg id="iconMoon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none">
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
       </svg>
     </button>
   </div>
 </header>
 
-<div class="tbar">
-  <div class="tbar-in" id="tbar"></div>
+<section class="hero">
+  <div class="hero-in">
+    <h1 class="hero-title">Explora la Pokédex</h1>
+    <p class="hero-sub">Descubre estadísticas, tipos, evoluciones y más de todos los Pokémon.</p>
+    <div class="search-wrap">
+      <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/>
+      </svg>
+      <input id="srch" type="search" placeholder="Buscar por nombre o número…" autocomplete="off" autocorrect="off">
+    </div>
+  </div>
+</section>
+
+<div class="layout">
+
+  <aside class="sidebar" id="sidebar" aria-label="Filtros">
+    <div class="sb-mobile-head">
+      <span class="sb-mobile-title">Filtros</span>
+      <button class="icon-btn sb-close" id="sbClose" aria-label="Cerrar filtros">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">Generación</div>
+      <select id="gs" class="gen-select" aria-label="Seleccionar generación">
+        <option value="0,151">Generación I</option>
+        <option value="151,100">Generación II</option>
+        <option value="251,135">Generación III</option>
+        <option value="386,107">Generación IV</option>
+        <option value="493,156">Generación V</option>
+        <option value="649,72">Generación VI</option>
+        <option value="721,88">Generación VII</option>
+        <option value="809,96">Generación VIII</option>
+        <option value="905,120">Generación IX</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">Tipo</div>
+      <div id="typeGrid" class="type-grid" role="group" aria-label="Filtrar por tipo"></div>
+    </div>
+
+    <div class="sb-footer">
+      <button class="sb-clear" id="sbClear">Limpiar filtros</button>
+    </div>
+  </aside>
+
+  <div class="content">
+    <div class="results-bar" id="infoBar"></div>
+    <div class="grid" id="grid"></div>
+    <div class="pgn" id="pgn" hidden></div>
+  </div>
+
 </div>
 
-<main class="main">
-  <div class="info-bar" id="infoBar"></div>
-  <div class="grid" id="grid"></div>
-  <div class="pgn" id="pgn" hidden></div>
-</main>
+<div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+<button class="mobile-filter-btn" id="mobileFilterBtn" aria-label="Abrir filtros">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+    <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/>
+  </svg>
+  Filtros
+  <span id="mobileFilterCount" class="mfc" hidden></span>
+</button>
 
 <div class="bdrop" id="bdrop" hidden>
-  <div class="mbox" id="mbox"></div>
+  <div class="mbox" id="mbox" role="dialog" aria-modal="true"></div>
 </div>
 
 <script type="module" src="/src/main.js"></script>
